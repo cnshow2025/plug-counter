@@ -270,8 +270,8 @@
     <p class="qual" id="qual">選一張照片後，這裡會顯示拍攝品質</p>
     <div class="tbl-scroll">
       <table>
-        <thead><tr><th>區塊</th><th>面積 px²</th><th>÷ 單顆</th><th>判定</th><th>備註</th></tr></thead>
-        <tbody id="rows"><tr><td colspan="5" class="note">尚無結果</td></tr></tbody>
+        <thead><tr><th>區塊</th><th>面積 px²</th><th>÷ 單顆</th><th>短×長 px</th><th>判定</th><th>備註</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="6" class="note">尚無結果</td></tr></tbody>
       </table>
     </div>
   </section>
@@ -310,7 +310,9 @@
       <li><b>量單顆面積</b>：對綠色遮罩做 Otsu 自動門檻把透明套環排除，切出各塊綠色區域，取面積的<b>中位數</b>當一顆的面積。用中位數而不是最小值 —— 最小的那塊往往是被手掌遮住、只露一角的塞頭，拿它當單位會把總數算成兩倍。</li>
       <li><b>面積相除</b>：每塊區域各自算 <b>四捨五入(區塊面積 ÷ 單顆面積)</b>，至少算一顆，相加就是總數。黏在一起的兩顆面積約兩倍，自然就被算成 2。明細表列出每一塊的比值，比值接近 .5 的會標記出來 —— 那是唯一可能算錯的地方。</li>
       <li><b>標記位置</b>：知道一顆多大之後，用距離轉換在該塊裡挑出 k 個最深的點當標記，所以黏在一起的也會各自標上號碼。</li>
+      <li><b>外形檢查</b>：每塊都用旋轉卡尺求最小外接矩形。塞頭從側面拍時<b>長邊幾乎不變（實測 ±1%）</b>，只有短邊會被拉寬（±23%），所以長邊是比面積（±5%）更穩的尺。若某塊的外形只容得下一顆，就算面積偏大也判一顆；若面積說一顆但外形偏長，會標示可能是兩顆。明細表列出每塊的短×長，側拍被拉寬的一眼就看得出來。</li>
       <li><b>兩個交叉核對</b>：<b>面積總和</b>是把所有比值加起來只四捨五入一次（上方顯示小數，越接近整數越可靠）；<b>分水嶺</b>則是完全獨立的距離轉換 + 分水嶺分割。三個數字一致時最可靠。<br>
+        （附帶一個實測結果：把面積上限設成「典型短邊 × 該塊長邊」來削掉矩形外的面積，在測試照片上削掉 0 px² —— 側拍是讓整個輪廓變寬，不是多出東西戳在矩形外，區塊面積本來就只有外接矩形的 84～95%。用亮度分出頂面與側壁也不可行，因為亮度差異來自整捆打光不均，不是頂面對側壁。）<br>
         為什麼主算法用個別區塊而不是總面積？實測把單顆面積刻意調偏：個別區塊法在 −2%～+10% 內都算對，總面積法只有 −1%～+3%。因為總面積法的容許誤差是 ±0.5÷總數，<b>塞頭越多越脆弱</b>（20 顆時 ±2.5%，100 顆時只剩 ±0.5%），而個別區塊法的容忍度不隨數量縮小。</li>
     </ol>
     <p class="cal">開發時的驗證：一張手拿 <b>20</b> 顆綠色塞頭的照片，面積法算出 <b>20</b> 顆。同一張縮到 <b>450</b> px 寬（每顆塞頭只剩 <b>19</b> px）仍然算對，到 340 px 才失效 —— 手機隨手拍的解析度遠遠夠用。讓整捆佔滿畫面的好處主要在背景乾淨、對焦準、透視變形小，不在像素多。誤差主要來自塞頭朝向不同造成的投影面積落差，會讓比值偏離整數；比值接近 .5 的那幾塊就是要留意的地方。</p>
@@ -617,6 +619,45 @@ function focusField(G, w, h, strength){
   for (let i=0; i<out.length; i++) out[i] = cov[i] >= 0.12 ? 1 : 0;
   return out;
 }
+/* convex hull (monotone chain) of a blob's boundary pixels */
+function hullOf(pts){
+  if (pts.length < 3) return pts;
+  const P = pts.slice().sort((a,b) => a[0]-b[0] || a[1]-b[1]);
+  const cross = (o,a,b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const half = arr => {
+    const h = [];
+    for (const p of arr) {
+      while (h.length >= 2 && cross(h[h.length-2], h[h.length-1], p) <= 0) h.pop();
+      h.push(p);
+    }
+    return h;
+  };
+  return half(P).slice(0,-1).concat(half(P.slice().reverse()).slice(0,-1));
+}
+/* smallest-area rectangle enclosing a blob (rotating calipers). A plug seen from the
+   side keeps its long edge to within 1% and only gets wider, so the long edge is a
+   far steadier ruler than the pixel area (which swings 5%). */
+function rectOf(pts){
+  const h = hullOf(pts);
+  if (h.length < 3) return {w:0, L:0, area:0};
+  let best = null;
+  for (let i=0; i<h.length; i++) {
+    const a = h[i], b = h[(i+1)%h.length];
+    const ex = b[0]-a[0], ey = b[1]-a[1], n = Math.hypot(ex, ey);
+    if (n < 1e-9) continue;
+    const c = ex/n, si = ey/n;
+    let x0=Infinity, x1=-Infinity, y0=Infinity, y1=-Infinity;
+    for (const p of h) {
+      const px = p[0]*c + p[1]*si, py = -p[0]*si + p[1]*c;
+      if (px<x0) x0=px; if (px>x1) x1=px;
+      if (py<y0) y0=py; if (py>y1) y1=py;
+    }
+    const w = x1-x0, hh = y1-y0, ar = w*hh;
+    if (!best || ar < best.area) best = {area:ar, w:Math.min(w,hh), L:Math.max(w,hh)};
+  }
+  return best || {w:0, L:0, area:0};
+}
+
 /* k marker spots inside one blob: deepest points of the distance map, each
    suppressing a disc around itself; the radius relaxes until k of them fit */
 function placeK(idx, dist, W, k, unit){
@@ -740,7 +781,7 @@ function analyse(){
   for (let i=0; i<W*H; i++) if (cc.lab[i] && keep.has(cc.lab[i])) keptMask[i] = 1;
 
   const dist = edt(keptMask, W, H);
-  const perMax = new Map(), pix = new Map();
+  const perMax = new Map(), pix = new Map(), edge = new Map();
   for (let i=0; i<W*H; i++) {
     if (!keptMask[i]) continue;
     const l = cc.lab[i], d = dist[i];
@@ -748,20 +789,46 @@ function analyse(){
     let a = pix.get(l);
     if (!a) { a = []; pix.set(l, a); }
     a.push(i);
+    const y = (i/W)|0, x = i - y*W;
+    if (x === 0 || y === 0 || x === W-1 || y === H-1 ||
+        !keptMask[i-1] || !keptMask[i+1] || !keptMask[i-W] || !keptMask[i+W]) {
+      let e = edge.get(l);
+      if (!e) { e = []; edge.set(l, e); }
+      e.push([x, y]);
+    }
   }
   const rTyp = median([...perMax.values()]) || 8;
 
   /* the count itself: every blob is round(its area / one plug's area), at least one */
   const rows = [];
-  let pts = [];
   kept.slice().sort((a,b) => b.a-a.a).forEach(c => {
-    const ratio = c.a/unit, k = Math.max(1, Math.round(ratio));
+    const ratio = c.a/unit, kArea = Math.max(1, Math.round(ratio));
     const off = Math.abs(ratio - Math.floor(ratio) - 0.5);
     const border = c.minx <= 2 || c.maxx >= W-3 || c.miny <= 2 || c.maxy >= H-3;
-    rows.push({a:c.a, ratio, k, border, edgy: off < 0.15 && ratio > 0.65});
-    pts = pts.concat(placeK(pix.get(c.id) || [], dist, W, k, unit));
+    const rc = rectOf(edge.get(c.id) || []);
+    rows.push({id:c.id, a:c.a, ratio, kArea, k:kArea, border, shape:"",
+               w:rc.w, L:rc.L, fill: rc.area ? c.a/rc.area : 0,
+               edgy: off < 0.15 && ratio > 0.65});
   });
+
+  /* the typical plug rectangle, measured on the blobs the area call says are single */
+  const sing = rows.filter(r => r.kArea === 1 && r.L > 0);
+  const wTyp = median(sing.map(r => r.w)), LTyp = median(sing.map(r => r.L));
+  if (sing.length >= 3 && LTyp > 0) {
+    for (const r of rows) {
+      if (r.L <= 0) continue;
+      if (r.w <= 1.35*wTyp && r.L <= 1.12*LTyp) {
+        /* the outline has room for one plug only, whatever the area says */
+        if (r.kArea > 1) { r.k = 1; r.shape = "外形只容得下一顆，面積偏大（側拍）"; }
+      } else if (r.kArea === 1 && r.L > 1.2*LTyp) {
+        r.shape = "外形偏長，可能其實是兩顆";
+      }
+    }
+  }
   const total = rows.reduce((s, r) => s+r.k, 0);
+
+  let pts = [];
+  for (const r of rows) pts = pts.concat(placeK(pix.get(r.id) || [], dist, W, r.k, unit));
 
   /* second opinion: one division on the summed area instead of one per block.
      Tempting, but its tolerance on the unit area is only +-0.5/N and so shrinks as
@@ -791,6 +858,8 @@ function analyse(){
     ws,
     workPx: Math.round(Math.sqrt(unit)*(cw0/W)),          /* one plug as the maths saw it */
     plugPx: Math.round(Math.sqrt(unit)*(cw0/W)*src.k0),   /* one plug in the original photo */
+    wTyp: Math.round(wTyp*(cw0/W)*src.k0),
+    LTyp: Math.round(LTyp*(cw0/W)*src.k0),
     photo: `${src.ow}×${src.oh}`,
     share: cw0/sw,                                        /* share of the frame the pile fills */
     ms: Math.round(performance.now()-t0)
@@ -866,7 +935,7 @@ function render(){
     els.qual.className = "qual";
   } else if (st) {
     const thin = st.workPx < 25;
-    els.qual.innerHTML = `照片 <b>${st.photo}</b> · 單顆約 <b>${st.plugPx}</b> px 見方 ·`
+    els.qual.innerHTML = `照片 <b>${st.photo}</b> · 單顆矩形 <b>${st.wTyp}×${st.LTyp}</b> px ·`
       + ` 整捆佔畫面寬 <b>${Math.round(st.share*100)}%</b> · `
       + (thin ? "解析度偏低，靠近一點重拍會更準" : "解析度充足");
     els.qual.className = thin ? "qual warn" : "qual";
@@ -878,18 +947,20 @@ function render(){
 }
 function renderRows(){
   if (!S.rows || !S.rows.length) {
-    els.rows.innerHTML = `<tr><td colspan="5" class="note">尚無結果</td></tr>`;
+    els.rows.innerHTML = `<tr><td colspan="6" class="note">尚無結果</td></tr>`;
     return;
   }
   els.rows.innerHTML = S.rows.map((r, i) => {
-    const cls = [r.k > 1 ? "multi" : "", r.edgy ? "edgy" : "", r.border ? "border" : ""]
-                  .filter(Boolean).join(" ");
-    const note = r.border ? "碰到畫面邊緣，可能被切到"
+    const cls = [r.k > 1 ? "multi" : "", r.edgy ? "edgy" : "",
+                 r.border || r.shape ? "border" : ""].filter(Boolean).join(" ");
+    const note = r.shape ? r.shape
+               : r.border ? "碰到畫面邊緣，可能被切到"
                : r.edgy ? "比值接近 .5，可能差一顆"
                : r.k > 1 ? `${r.k} 顆黏在一起`
                : r.ratio < 0.75 ? "只露出一部分，仍算一顆" : "";
     return `<tr class="${cls}"><td>${i+1}</td><td>${r.a}</td>`
-         + `<td class="r">${r.ratio.toFixed(2)}</td><td class="k">${r.k}</td>`
+         + `<td class="r">${r.ratio.toFixed(2)}</td>`
+         + `<td>${Math.round(r.w)}×${Math.round(r.L)}</td><td class="k">${r.k}</td>`
          + `<td class="note">${note}</td></tr>`;
   }).join("");
 }
