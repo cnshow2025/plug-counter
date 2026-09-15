@@ -968,7 +968,7 @@ function accent(){
   return getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#0B8C77";
 }
 function drawMarkers(g){
-  const r = Math.max(10, S.rTyp*0.40), lw = Math.max(2, r*0.20);
+  const r = Math.max(20, S.rTyp*0.80), lw = Math.max(3, r*0.16);
   g.font = `700 ${Math.round(r*1.15)}px "Chakra Petch", monospace`;
   g.textAlign = "center"; g.textBaseline = "middle";
   S.markers.forEach((mk, i) => {
@@ -987,7 +987,7 @@ els.view.addEventListener("pointerdown", e => {
   const c = els.view, rect = c.getBoundingClientRect();
   const x = (e.clientX-rect.left)*(c.width/rect.width);
   const y = (e.clientY-rect.top)*(c.height/rect.height);
-  const hit = Math.max(16, S.rTyp*0.95);
+  const hit = Math.max(22, S.rTyp*0.95);
   let found = -1, bestD = Infinity;
   S.markers.forEach((mk, i) => {
     const d = (mk.x-x)**2 + (mk.y-y)**2;
