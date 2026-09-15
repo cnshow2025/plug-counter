@@ -64,6 +64,12 @@
 
 ## 部署
 
-`main` 分支一有 push，`.github/workflows/pages.yml` 就會把整個 repo 發佈到 GitHub Pages。`actions/configure-pages` 帶 `enablement: true`，第一次執行會自動開啟 Pages，不需要手動去 Settings 設定。
+直接由 `main` 分支發佈，不需要 CI。第一次要手動開啟一次：
+
+**Settings → Pages → Build and deployment → Source 選「Deploy from a branch」→ Branch 選 `main` / `(root)` → Save**
+
+之後每次 push 到 `main`，GitHub 會自動重新發佈（約一分鐘）。
+
+> 原本放了一份 GitHub Actions 部署流程，並用 `actions/configure-pages` 的 `enablement: true` 想自動開啟 Pages，但工作流程的 `GITHUB_TOKEN` 沒有建立 Pages 站台的權限（`Create Pages site failed: Resource not accessible by integration`）。既然 Pages 終究得手動開一次，就不需要多一層 CI 了。
 
 本機使用不需要任何工具，直接在瀏覽器開 `index.html` 即可。
