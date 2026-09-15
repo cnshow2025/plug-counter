@@ -100,6 +100,7 @@
   .empty[hidden]{display:none}
   .empty-t{margin:0 0 6px; font-family:var(--mono); font-size:15px; font-weight:700;
            letter-spacing:.06em; color:var(--ink-2)}
+  .empty-t.warn{color:var(--signal)}
   .empty-s{margin:0; font-size:13px; line-height:1.75; color:var(--ink-3)}
   .busy{position:absolute; inset:0; display:grid; place-items:center; background:var(--veil)}
   .busy[hidden]{display:none}
@@ -880,6 +881,7 @@ function fail(msg){
   S.crop = null; S.tint = null; S.markers = []; S.autoN = 0;
   S.stats = null; S.rows = null; S.label = msg;
   render();
+  say(msg, true);
 }
 
 /* ----------------------------------------------------------------- drawing */
@@ -1039,21 +1041,29 @@ function loadSrc(url, name){
     }
     S.view = "result"; syncTabs(); rerun();
   };
-  img.onerror = () => fail("這個檔案讀不進來，換一張試試");
+  img.onerror = () => { els.busy.hidden = true; fail("這個檔案的影像格式讀不進來，換一張試試"); };
   img.decoding = "sync";
   img.src = url;
-  els.status.textContent = name || "讀取中…";
+}
+/* progress the user can actually see - if a step fails, it says which one */
+function say(msg, warn){
+  els.status.textContent = msg;
+  const t = els.empty.querySelector(".empty-t");
+  if (t && !S.img) { t.textContent = msg; t.className = warn ? "empty-t warn" : "empty-t"; }
 }
 /* read through FileReader rather than URL.createObjectURL: a blob: URL belongs to the
    page's origin, and this page runs in a sandboxed frame where that can fail silently */
 function loadFile(fl){
-  if (!fl) return;
-  if (!/^image\//.test(fl.type || "")) { fail("這不是圖片檔（" + (fl.type || "未知格式") + "）"); return; }
+  if (!fl) { say("沒有收到檔案，再選一次", true); return; }
+  if (!/^image\//.test(fl.type || "")) {
+    say("這不是圖片檔（" + (fl.type || "未知格式") + "）", true);
+    return;
+  }
+  say("讀取 " + fl.name + "…");
   els.busy.hidden = false;
-  els.status.textContent = "讀取 " + fl.name + "…";
   const fr = new FileReader();
-  fr.onload = () => loadSrc(fr.result, fl.name);
-  fr.onerror = () => { els.busy.hidden = true; fail("讀取檔案失敗，再試一次"); };
+  fr.onload = () => { say("解碼中…"); loadSrc(fr.result, fl.name); };
+  fr.onerror = () => { els.busy.hidden = true; say("讀取檔案失敗，再試一次", true); };
   fr.readAsDataURL(fl);
 }
 function syncTabs(){
