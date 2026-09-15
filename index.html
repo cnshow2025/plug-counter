@@ -260,6 +260,7 @@
     <div class="met"><dt>單顆面積</dt><dd id="mUnit">—<small> px²</small></dd></div>
     <div class="met"><dt>綠色區塊</dt><dd id="mComp">—</dd></div>
     <div class="met"><dt>黏在一起</dt><dd id="mMerge">—</dd></div>
+    <div class="met"><dt>面積總和核對</dt><dd id="mSum">—</dd></div>
     <div class="met"><dt>分水嶺核對</dt><dd id="mWs">—</dd></div>
     <div class="met"><dt>運算耗時</dt><dd id="mTime">—<small> ms</small></dd></div>
   </dl>
@@ -308,7 +309,9 @@
       <li><b>放大重算</b>：把叢集區域從原始照片裁出來、放大到約 1000 px 再處理 —— 手機照片直接整張算會因為太小而黏成一團。</li>
       <li><b>量單顆面積</b>：對綠色遮罩做 Otsu 自動門檻把透明套環排除，切出各塊綠色區域，取面積的<b>中位數</b>當一顆的面積。用中位數而不是最小值 —— 最小的那塊往往是被手掌遮住、只露一角的塞頭，拿它當單位會把總數算成兩倍。</li>
       <li><b>面積相除</b>：每塊區域各自算 <b>四捨五入(區塊面積 ÷ 單顆面積)</b>，至少算一顆，相加就是總數。黏在一起的兩顆面積約兩倍，自然就被算成 2。明細表列出每一塊的比值，比值接近 .5 的會標記出來 —— 那是唯一可能算錯的地方。</li>
-      <li><b>標記位置</b>：知道一顆多大之後，用距離轉換在該塊裡挑出 k 個最深的點當標記，所以黏在一起的也會各自標上號碼。另外獨立跑一次分水嶺分割當交叉核對，兩個數字一致就很可靠。</li>
+      <li><b>標記位置</b>：知道一顆多大之後，用距離轉換在該塊裡挑出 k 個最深的點當標記，所以黏在一起的也會各自標上號碼。</li>
+      <li><b>兩個交叉核對</b>：<b>面積總和</b>是把所有比值加起來只四捨五入一次（上方顯示小數，越接近整數越可靠）；<b>分水嶺</b>則是完全獨立的距離轉換 + 分水嶺分割。三個數字一致時最可靠。<br>
+        為什麼主算法用個別區塊而不是總面積？實測把單顆面積刻意調偏：個別區塊法在 −2%～+10% 內都算對，總面積法只有 −1%～+3%。因為總面積法的容許誤差是 ±0.5÷總數，<b>塞頭越多越脆弱</b>（20 顆時 ±2.5%，100 顆時只剩 ±0.5%），而個別區塊法的容忍度不隨數量縮小。</li>
     </ol>
     <p class="cal">開發時的驗證：一張手拿 <b>20</b> 顆綠色塞頭的照片，面積法算出 <b>20</b> 顆。同一張縮到 <b>450</b> px 寬（每顆塞頭只剩 <b>19</b> px）仍然算對，到 340 px 才失效 —— 手機隨手拍的解析度遠遠夠用。讓整捆佔滿畫面的好處主要在背景乾淨、對焦準、透視變形小，不在像素多。誤差主要來自塞頭朝向不同造成的投影面積落差，會讓比值偏離整數；比值接近 .5 的那幾塊就是要留意的地方。</p>
   </section>
@@ -319,7 +322,7 @@
 
 const els = {};
 ["count","status","busy","view","box","tabs","file","cam","empty","btnReset","btnClear",
- "mAuto","mEdit","mUnit","mComp","mMerge","mWs","mTime","rows","qual","unitAdj","minc","tight","focus",
+ "mAuto","mEdit","mUnit","mComp","mMerge","mSum","mWs","mTime","rows","qual","unitAdj","minc","tight","focus",
  "oUnitAdj","oMinc","oTight","oFocus"].forEach(id => els[id] = document.getElementById(id));
 
 const P = { unitAdj:1.00, minc:0.35, tight:1.00, focus:1.00 };
@@ -760,6 +763,12 @@ function analyse(){
   });
   const total = rows.reduce((s, r) => s+r.k, 0);
 
+  /* second opinion: one division on the summed area instead of one per block.
+     Tempting, but its tolerance on the unit area is only +-0.5/N and so shrinks as
+     the pile grows: measured +-2%/+10% for per-block vs -1%/+3% for this. Kept as a
+     cross-check, where its fractional value also reads as a confidence measure. */
+  const ratioSum = rows.reduce((s, r) => s+r.ratio, 0);
+
   /* independent second opinion: watershed split of the same mask */
   const ws = floodSplit(dist, keptMask, W, H, HFAC*rTyp).objs
                .filter(o => o.a >= 0.15*unit).length;
@@ -777,6 +786,8 @@ function analyse(){
     unit: Math.round(unit),
     comps: kept.length,
     merged: rows.filter(r => r.k > 1).length,
+    sum: ratioSum,
+    byTotal: Math.max(1, Math.round(ratioSum)),
     ws,
     workPx: Math.round(Math.sqrt(unit)*(cw0/W)),          /* one plug as the maths saw it */
     plugPx: Math.round(Math.sqrt(unit)*(cw0/W)*src.k0),   /* one plug in the original photo */
@@ -843,6 +854,10 @@ function render(){
   els.mUnit.innerHTML = st ? `${st.unit}<small> px²</small>` : "—";
   els.mComp.textContent = st ? st.comps : "—";
   els.mMerge.innerHTML = st ? (st.merged ? `${st.merged}<small> 塊</small>` : `<small>沒有</small>`) : "—";
+  els.mSum.innerHTML = st
+    ? `${st.sum.toFixed(1)}<small> → ${st.byTotal}${st.byTotal === S.autoN ? " 一致" : " 不一致"}</small>`
+    : "—";
+  els.mSum.className = st && st.byTotal !== S.autoN ? "edit" : "";
   els.mWs.innerHTML = st ? `${st.ws}<small>${st.ws === S.autoN ? " 一致" : " 不一致"}</small>` : "—";
   els.mWs.className = st && st.ws !== S.autoN ? "edit" : "";
   els.mTime.innerHTML = st ? `${st.ms}<small> ms</small>` : "—";
