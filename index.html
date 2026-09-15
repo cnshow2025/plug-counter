@@ -343,18 +343,22 @@ function mkCanvas(w,h){
 }
 /* progressive halving keeps detail that a single big downscale step throws away */
 function scaledCopy(src, sx, sy, sw, sh, dw, dh){
-  let cur = mkCanvas(sw, sh);
-  cur.ctx.drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
-  let cw = sw, ch = sh;
+  /* Halve down to the target, but never allocate a canvas the size of the source:
+     a 12 MP phone photo would be a 78 MB canvas, and mobile browsers cap canvas area
+     and hand back a blank one instead of throwing. Each step draws straight from the
+     source on the first pass, so the biggest canvas here is half the source at most. */
+  let cur = null, cw = sw, ch = sh;
   while (cw > dw*2 && ch > dh*2) {
     const nw = Math.max(1, cw>>1), nh = Math.max(1, ch>>1);
     const nx = mkCanvas(nw, nh);
-    nx.ctx.drawImage(cur.canvas, 0, 0, cw, ch, 0, 0, nw, nh);
+    if (cur) nx.ctx.drawImage(cur.canvas, 0, 0, cw, ch, 0, 0, nw, nh);
+    else nx.ctx.drawImage(src, sx, sy, sw, sh, 0, 0, nw, nh);
     cur = nx; cw = nw; ch = nh;
   }
-  if (cw === dw && ch === dh) return cur;
+  if (cur && cw === dw && ch === dh) return cur;
   const out = mkCanvas(dw, dh);
-  out.ctx.drawImage(cur.canvas, 0, 0, cw, ch, 0, 0, dw, dh);
+  if (cur) out.ctx.drawImage(cur.canvas, 0, 0, cw, ch, 0, 0, dw, dh);
+  else out.ctx.drawImage(src, sx, sy, sw, sh, 0, 0, dw, dh);
   return out;
 }
 function hsvOf(id){
@@ -1022,13 +1026,17 @@ function rerun(){
   if (!S.img) return;
   busy(true, () => {
     try { analyse(); }
-    catch (err) { fail("運算失敗：" + err.message); }
+    catch (err) { fail("運算失敗：" + (err && err.message ? err.message : err)); }
     finally { els.busy.hidden = true; }
   });
 }
+addEventListener("error", e => { if (!S.crop) say("發生錯誤：" + e.message, true); });
 function loadSrc(url, name){
   const img = new Image();
   img.onload = () => {
+    if (!img.naturalWidth || !img.naturalHeight) {
+      els.busy.hidden = true; fail("影像解碼後是空的，換一張試試"); return;
+    }
     /* a 12 MP phone photo costs seconds to work through for no gain: the resolution
        sweep counts the same 20 plugs all the way down to a 450 px wide photo */
     const w0 = img.naturalWidth, h0 = img.naturalHeight;
@@ -1039,7 +1047,7 @@ function loadSrc(url, name){
     } else {
       S.img = {el:img, w:w0, h:h0, k0:1, ow:w0, oh:h0};
     }
-    S.view = "result"; syncTabs(); rerun();
+    S.view = "result"; syncTabs(); say("分析中…"); rerun();
   };
   img.onerror = () => { els.busy.hidden = true; fail("這個檔案的影像格式讀不進來，換一張試試"); };
   img.decoding = "sync";
@@ -1053,17 +1061,19 @@ function say(msg, warn){
 }
 /* read through FileReader rather than URL.createObjectURL: a blob: URL belongs to the
    page's origin, and this page runs in a sandboxed frame where that can fail silently */
-function loadFile(fl){
-  if (!fl) { say("沒有收到檔案，再選一次", true); return; }
+function loadFile(fl, done){
+  const finish = () => { try { done && done(); } catch (e) {} };
+  if (!fl) { say("沒有收到檔案，再選一次", true); finish(); return; }
   if (!/^image\//.test(fl.type || "")) {
-    say("這不是圖片檔（" + (fl.type || "未知格式") + "）", true);
-    return;
+    say("讀不了這個格式（" + (fl.type || "未知") + "）。iPhone 的 HEIC 請改存成 JPG", true);
+    finish(); return;
   }
-  say("讀取 " + fl.name + "…");
+  say(`讀取 ${fl.name}（${(fl.size/1048576).toFixed(1)} MB）…`);
   els.busy.hidden = false;
   const fr = new FileReader();
-  fr.onload = () => { say("解碼中…"); loadSrc(fr.result, fl.name); };
-  fr.onerror = () => { els.busy.hidden = true; say("讀取檔案失敗，再試一次", true); };
+  fr.onload = () => { say("解碼中…"); loadSrc(fr.result, fl.name); finish(); };
+  fr.onerror = () => { els.busy.hidden = true; say("讀取檔案失敗，再試一次", true); finish(); };
+  fr.onabort = () => { els.busy.hidden = true; say("讀取被中斷，再試一次", true); finish(); };
   fr.readAsDataURL(fl);
 }
 function syncTabs(){
@@ -1075,8 +1085,9 @@ function syncTabs(){
 }
 function pick(input){
   input.addEventListener("change", () => {
-    loadFile(input.files && input.files[0]);
-    input.value = "";
+    /* do NOT clear input.value here: the read below is asynchronous and clearing it
+       mid-read can invalidate the File, which kills the read without firing onerror */
+    loadFile(input.files && input.files[0], () => { input.value = ""; });
   });
 }
 pick(els.file); pick(els.cam);
