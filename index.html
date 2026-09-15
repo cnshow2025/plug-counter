@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="用照片數綠色塞頭的數量（= 管子數量）。純前端運算，照片不會離開你的瀏覽器。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%F0%9F%94%A2</text></svg>">
+<title>塞頭計數器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  /* base reset - on GitHub Pages there is no host page to supply this */
+  :root{
+    color-scheme: light dark;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html{ -webkit-text-size-adjust:100% }
+  img{ max-width:100% }
+  [hidden]{ display:none !important }
+</style>
+</head>
+<body>
+<style>
+  :root{
+    --ground:#ECF0EF; --panel:#FFFFFF; --panel-2:#F5F8F7;
+    --ink:#0F1618; --ink-2:#55655F; --ink-3:#7E8F8A;
+    --line:#CBD6D2; --line-soft:#DFE7E4;
+    --accent:#0B8C77; --accent-deep:#06554A; --accent-soft:#DCEDE8; --on-accent:#FFFFFF;
+    --signal:#B0561F; --signal-soft:#F7E6D8;
+    --veil:rgba(255,255,255,.74);
+    --shadow:0 1px 2px rgba(15,40,35,.06), 0 8px 24px -16px rgba(15,40,35,.28);
+    --mono:"Chakra Petch","Noto Sans TC",ui-monospace,monospace;
+    --sans:"Noto Sans TC","Chakra Petch",system-ui,-apple-system,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0B1012; --panel:#131B1D; --panel-2:#0F1719;
+      --ink:#E3EDEA; --ink-2:#93A6A1; --ink-3:#6F827D;
+      --line:#253134; --line-soft:#1C2528;
+      --accent:#34C3A6; --accent-deep:#8FE0CF; --accent-soft:#0F3229; --on-accent:#04201B;
+      --signal:#E08846; --signal-soft:#33210F;
+      --veil:rgba(10,18,20,.76);
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0B1012; --panel:#131B1D; --panel-2:#0F1719;
+    --ink:#E3EDEA; --ink-2:#93A6A1; --ink-3:#6F827D;
+    --line:#253134; --line-soft:#1C2528;
+    --accent:#34C3A6; --accent-deep:#8FE0CF; --accent-soft:#0F3229; --on-accent:#04201B;
+    --signal:#E08846; --signal-soft:#33210F;
+    --veil:rgba(10,18,20,.76);
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.6;
+    -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:880px; margin:0 auto; padding-inline:16px; padding-block:22px 40px;
+        display:flex; flex-direction:column; gap:14px}
+
+  /* ---- header ---- */
+  .bar{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap}
+  .eyebrow{margin:0 0 2px; font-family:var(--mono); font-size:11px; font-weight:600;
+           letter-spacing:.16em; text-transform:uppercase; color:var(--accent)}
+  h1{margin:0; font-family:var(--mono); font-size:27px; font-weight:700; letter-spacing:.02em}
+  .readout{display:flex; align-items:baseline; gap:6px; margin-left:auto}
+  .readout .num{font-family:var(--mono); font-weight:700; font-size:clamp(46px,13vw,64px);
+                line-height:.85; letter-spacing:-.02em; font-variant-numeric:tabular-nums;
+                color:var(--accent)}
+  .readout .unit{font-family:var(--mono); font-size:16px; font-weight:600; color:var(--ink-2)}
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:3px}
+
+  /* ---- stage ---- */
+  .stage{padding:10px 10px 0; box-shadow:var(--shadow)}
+  .stage-head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:0 2px 9px}
+  .tabs{display:flex; border:1px solid var(--line); border-radius:2px; overflow:hidden}
+  .tab{appearance:none; border:0; background:transparent; color:var(--ink-2);
+       font-family:var(--mono); font-size:12.5px; font-weight:600; letter-spacing:.04em;
+       padding:5px 12px; cursor:pointer; border-right:1px solid var(--line)}
+  .tab:last-child{border-right:0}
+  .tab.is-on{background:var(--accent); color:var(--on-accent)}
+  .tab:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+  .status{margin:0 0 0 auto; font-family:var(--mono); font-size:12px; letter-spacing:.04em;
+          color:var(--ink-3); font-variant-numeric:tabular-nums}
+
+  .canvas-box{position:relative; display:flex; justify-content:center; align-items:center;
+              background:var(--panel-2); border:1px solid var(--line-soft); min-height:220px;
+              overflow:hidden}
+  canvas{display:block; max-width:100%; max-height:min(66vh,560px); width:auto; height:auto;
+         touch-action:manipulation; cursor:crosshair}
+  .empty{padding:44px 20px; text-align:center; max-width:34em}
+  .empty[hidden]{display:none}
+  .empty-t{margin:0 0 6px; font-family:var(--mono); font-size:15px; font-weight:700;
+           letter-spacing:.06em; color:var(--ink-2)}
+  .empty-s{margin:0; font-size:13px; line-height:1.75; color:var(--ink-3)}
+  .busy{position:absolute; inset:0; display:grid; place-items:center; background:var(--veil)}
+  .busy[hidden]{display:none}
+  .busy span{font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:.1em;
+             color:var(--accent)}
+  .hint{margin:0; padding:9px 2px 11px; font-size:12.5px; color:var(--ink-3);
+        border-top:1px solid var(--line-soft)}
+  .hint b{color:var(--ink-2); font-weight:500}
+
+  /* ---- pickers & actions ---- */
+  .pickers{display:flex; flex-wrap:wrap; gap:8px}
+  .pick{display:flex; flex-direction:column; gap:5px; padding:9px 11px; min-width:0;
+        border:1px solid var(--line); background:var(--panel); border-radius:2px; cursor:pointer}
+  .pick:focus-within{border-color:var(--accent)}
+  .pick-t{font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.05em;
+          color:var(--ink-2)}
+  .pick input[type=file]{font-family:var(--sans); font-size:11.5px; color:var(--ink-3);
+                         max-width:100%; width:auto}
+  .pick input[type=file]::file-selector-button{
+    font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:.03em;
+    padding:7px 13px; margin-right:9px; cursor:pointer; border-radius:2px;
+    border:1px solid var(--accent); background:var(--accent); color:var(--on-accent)}
+  .pick input[type=file]:hover::file-selector-button{background:var(--accent-deep);
+    border-color:var(--accent-deep)}
+  .actions{display:flex; flex-wrap:wrap; gap:8px}
+  .btn{appearance:none; font-family:var(--mono); font-size:13.5px; font-weight:600;
+       letter-spacing:.03em; padding:8px 14px; border:1px solid var(--line);
+       background:var(--panel); color:var(--ink); border-radius:2px; cursor:pointer}
+  .btn:hover{border-color:var(--accent); color:var(--accent)}
+  .btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
+  .btn.primary:hover{background:var(--accent-deep); border-color:var(--accent-deep)}
+
+  /* ---- metrics ---- */
+  .metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr));
+           border-collapse:collapse}
+  .met{padding:10px 12px; border-right:1px solid var(--line-soft)}
+  .met:last-child{border-right:0}
+  .met dt{margin:0 0 2px; font-family:var(--mono); font-size:10.5px; font-weight:600;
+          letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3)}
+  .met dd{margin:0; font-family:var(--mono); font-size:16px; font-weight:600;
+          font-variant-numeric:tabular-nums; color:var(--ink)}
+  .met dd small{font-size:11px; font-weight:400; color:var(--ink-3); letter-spacing:.02em}
+  .met dd.edit{color:var(--signal)}
+
+  /* ---- detail table ---- */
+  .tbl{padding:12px 14px 14px}
+  .tbl h2{margin:0 0 1px; font-family:var(--mono); font-size:13px; font-weight:700;
+          letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2)}
+  .tbl h2 span{font-family:var(--sans); font-size:12px; font-weight:400; letter-spacing:0;
+               text-transform:none; color:var(--ink-3)}
+  .qual{margin:5px 0 0; font-size:12.5px; color:var(--ink-3)}
+  .qual b{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--ink-2); font-weight:600}
+  .qual.warn{color:var(--signal)}
+  .qual.warn b{color:var(--signal)}
+  .tbl-scroll{overflow-x:auto; margin-top:9px}
+  table{border-collapse:collapse; width:100%; font-family:var(--mono);
+        font-variant-numeric:tabular-nums; font-size:13.5px}
+  th{text-align:right; font-size:10.5px; font-weight:600; letter-spacing:.1em;
+     text-transform:uppercase; color:var(--ink-3); padding:0 8px 5px;
+     border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  th:last-child,td:last-child{text-align:left; width:42%}
+  td{padding:5px 8px; border-bottom:1px solid var(--line-soft); color:var(--ink)}
+  tr:last-child td{border-bottom:0}
+  td.note{font-family:var(--sans); font-size:12px; color:var(--ink-3)}
+  tr.multi td.k{color:var(--accent); font-weight:700}
+  tr.edgy td.note{color:var(--signal)}
+  tr.edgy td.r{color:var(--signal); font-weight:700}
+  tr.border td.note{color:var(--signal)}
+
+  /* ---- advanced ---- */
+  details{padding:0}
+  summary{cursor:pointer; padding:10px 14px; font-family:var(--mono); font-size:13px;
+          font-weight:600; letter-spacing:.04em; color:var(--ink-2)}
+  summary::marker{color:var(--accent)}
+  summary:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+  .sliders{padding:2px 14px 16px; display:flex; flex-direction:column; gap:15px;
+           border-top:1px solid var(--line-soft)}
+  .sl{display:grid; gap:5px}
+  .sl-top{display:flex; align-items:baseline; gap:8px}
+  .sl-top label{font-size:13.5px; font-weight:500}
+  .sl-top output{margin-left:auto; font-family:var(--mono); font-size:13px; font-weight:600;
+                 font-variant-numeric:tabular-nums; color:var(--accent)}
+  .sl p{margin:0; font-size:12px; color:var(--ink-3)}
+  input[type=range]{width:100%; accent-color:var(--accent); margin:0}
+  input[type=range]:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+
+  /* ---- notes ---- */
+  .notes{padding:14px 16px 16px}
+  .notes h2{margin:0 0 8px; font-family:var(--mono); font-size:13px; font-weight:700;
+            letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2)}
+  .notes ol{margin:0; padding-left:1.35em; font-size:13.5px; color:var(--ink-2)}
+  .notes ol li{margin-bottom:4px}
+  .notes ol li b{color:var(--ink); font-weight:600}
+  .notes .cal{margin:12px 0 0; padding:9px 11px; background:var(--accent-soft);
+              border-left:2px solid var(--accent); font-size:13px; color:var(--ink)}
+  .notes .cal b{font-family:var(--mono); font-variant-numeric:tabular-nums}
+
+  @media (max-width:520px){
+    h1{font-size:23px}
+    .metrics{grid-template-columns:repeat(2,1fr)}
+    .met{border-bottom:1px solid var(--line-soft)}
+    .met:nth-child(2n){border-right:0}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="bar">
+    <div>
+      <p class="eyebrow">Green plug count</p>
+      <h1>塞頭計數器</h1>
+    </div>
+    <div class="readout"><span class="num" id="count">—</span><span class="unit">顆</span></div>
+  </header>
+
+  <section class="stage panel">
+    <div class="stage-head">
+      <div class="tabs" role="tablist" id="tabs">
+        <button class="tab is-on" data-view="result" role="tab" aria-selected="true">結果</button>
+        <button class="tab" data-view="mask" role="tab" aria-selected="false">遮罩</button>
+        <button class="tab" data-view="source" role="tab" aria-selected="false">原圖</button>
+      </div>
+      <p class="status" id="status">載入中…</p>
+    </div>
+    <div class="canvas-box" id="box">
+      <canvas id="view" width="480" height="300" hidden></canvas>
+      <div class="empty" id="empty">
+        <p class="empty-t">還沒有照片</p>
+        <p class="empty-s">用下面的「從相簿選照片」或「直接用相機拍」開始。<br>
+          也可以把照片拖進這個框，或直接貼上。</p>
+      </div>
+      <div class="busy" id="busy" hidden><span>計算中…</span></div>
+    </div>
+    <p class="hint">點<b>空白處</b>補上漏掉的塞頭　·　點<b>圈圈</b>刪掉算錯的　·　上方數字即時更新<br>照片也可以直接拖進來或貼上</p>
+  </section>
+
+  <div class="pickers">
+    <label class="pick">
+      <span class="pick-t">從相簿選照片</span>
+      <input id="file" type="file" accept="image/*">
+    </label>
+    <label class="pick">
+      <span class="pick-t">直接用相機拍</span>
+      <input id="cam" type="file" accept="image/*" capture="environment">
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn" id="btnReset">回到自動結果</button>
+    <button class="btn" id="btnClear">清空改全手動</button>
+  </div>
+
+  <dl class="metrics panel" id="metrics">
+    <div class="met"><dt>自動偵測</dt><dd id="mAuto">—</dd></div>
+    <div class="met"><dt>手動修正</dt><dd id="mEdit">—</dd></div>
+    <div class="met"><dt>單顆面積</dt><dd id="mUnit">—<small> px²</small></dd></div>
+    <div class="met"><dt>綠色區塊</dt><dd id="mComp">—</dd></div>
+    <div class="met"><dt>黏在一起</dt><dd id="mMerge">—</dd></div>
+    <div class="met"><dt>分水嶺核對</dt><dd id="mWs">—</dd></div>
+    <div class="met"><dt>運算耗時</dt><dd id="mTime">—<small> ms</small></dd></div>
+  </dl>
+
+  <section class="panel tbl">
+    <h2>判定明細 <span>每塊綠色區域 ÷ 單顆面積</span></h2>
+    <p class="qual" id="qual">選一張照片後，這裡會顯示拍攝品質</p>
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr><th>區塊</th><th>面積 px²</th><th>÷ 單顆</th><th>判定</th><th>備註</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="5" class="note">尚無結果</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <details class="panel">
+    <summary>進階參數</summary>
+    <div class="sliders">
+      <div class="sl">
+        <div class="sl-top"><label for="unitAdj">單顆面積微調</label><output id="oUnitAdj">1.00</output></div>
+        <input type="range" id="unitAdj" min="0.75" max="1.30" step="0.01" value="1.00">
+        <p>直接乘在自動量到的單顆面積上，是最直接影響總數的參數。總數偏多就調大，偏少就調小 —— 下方明細表的比值會跟著變。</p>
+      </div>
+      <div class="sl">
+        <div class="sl-top"><label for="minc">最小面積</label><output id="oMinc">0.35</output></div>
+        <input type="range" id="minc" min="0.08" max="0.70" step="0.01" value="0.35">
+        <p>相對單顆面積的下限。調小會納入被手掌遮住、只露一角的邊緣塞頭，但也容易把雜訊算進來。</p>
+      </div>
+      <div class="sl">
+        <div class="sl-top"><label for="tight">顏色門檻</label><output id="oTight">1.00</output></div>
+        <input type="range" id="tight" min="0.80" max="1.25" step="0.01" value="1.00">
+        <p>綠色判定的鬆緊。調大只認最飽和的綠面（塞頭之間分得更開），調小會把淺綠的透明套環也算進來。</p>
+      </div>
+      <div class="sl">
+        <div class="sl-top"><label for="focus">背景剔除</label><output id="oFocus">1.00</output></div>
+        <input type="range" id="focus" min="0.50" max="1.80" step="0.05" value="1.00">
+        <p>用「對焦清楚程度」把模糊的背景去掉。背景有綠色物件時調大，塞頭本身被誤刪時調小。</p>
+      </div>
+    </div>
+  </details>
+
+  <section class="notes panel">
+    <h2>它怎麼算的</h2>
+    <ol>
+      <li><b>找整捆</b>：先縮到 600 px，用色相 168°±50° 找綠色，並用局部邊緣能量剔除模糊背景。這裡不能直接取「最大的一塊」—— 每顆塞頭都被自己的透明套環圍住，整捆從來不會連成一塊（範例照片會碎成 58 塊），取最大塊只會框到整捆的一角並把邊緣的塞頭切掉。所以先把遮罩模糊化讓各面融成一個區域，取最大的區域，再框住該區域內所有綠色像素、外加 12% 邊界。</li>
+      <li><b>放大重算</b>：把叢集區域從原始照片裁出來、放大到約 1000 px 再處理 —— 手機照片直接整張算會因為太小而黏成一團。</li>
+      <li><b>量單顆面積</b>：對綠色遮罩做 Otsu 自動門檻把透明套環排除，切出各塊綠色區域，取面積的<b>中位數</b>當一顆的面積。用中位數而不是最小值 —— 最小的那塊往往是被手掌遮住、只露一角的塞頭，拿它當單位會把總數算成兩倍。</li>
+      <li><b>面積相除</b>：每塊區域各自算 <b>四捨五入(區塊面積 ÷ 單顆面積)</b>，至少算一顆，相加就是總數。黏在一起的兩顆面積約兩倍，自然就被算成 2。明細表列出每一塊的比值，比值接近 .5 的會標記出來 —— 那是唯一可能算錯的地方。</li>
+      <li><b>標記位置</b>：知道一顆多大之後，用距離轉換在該塊裡挑出 k 個最深的點當標記，所以黏在一起的也會各自標上號碼。另外獨立跑一次分水嶺分割當交叉核對，兩個數字一致就很可靠。</li>
+    </ol>
+    <p class="cal">開發時的驗證：一張手拿 <b>20</b> 顆綠色塞頭的照片，面積法算出 <b>20</b> 顆。同一張縮到 <b>450</b> px 寬（每顆塞頭只剩 <b>19</b> px）仍然算對，到 340 px 才失效 —— 手機隨手拍的解析度遠遠夠用。讓整捆佔滿畫面的好處主要在背景乾淨、對焦準、透視變形小，不在像素多。誤差主要來自塞頭朝向不同造成的投影面積落差，會讓比值偏離整數；比值接近 .5 的那幾塊就是要留意的地方。</p>
+  </section>
+</div>
+
+<script>
+"use strict";
+
+const els = {};
+["count","status","busy","view","box","tabs","file","cam","empty","btnReset","btnClear",
+ "mAuto","mEdit","mUnit","mComp","mMerge","mWs","mTime","rows","qual","unitAdj","minc","tight","focus",
+ "oUnitAdj","oMinc","oTight","oFocus"].forEach(id => els[id] = document.getElementById(id));
+
+const P = { unitAdj:1.00, minc:0.35, tight:1.00, focus:1.00 };
+const HFAC = 0.10;   /* watershed h-maxima level, cross-check only */
+const S = { img:null, crop:null, tint:null, full:null, roi:null, stats:null, rows:null,
+            markers:[], autoN:0, added:0, removed:0, rTyp:20, view:"result", label:"" };
+
+/* ------------------------------------------------------------------ helpers */
+function mkCanvas(w,h){
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const g = c.getContext("2d", {willReadFrequently:true});
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+  return {canvas:c, ctx:g};
+}
+/* progressive halving keeps detail that a single big downscale step throws away */
+function scaledCopy(src, sx, sy, sw, sh, dw, dh){
+  let cur = mkCanvas(sw, sh);
+  cur.ctx.drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
+  let cw = sw, ch = sh;
+  while (cw > dw*2 && ch > dh*2) {
+    const nw = Math.max(1, cw>>1), nh = Math.max(1, ch>>1);
+    const nx = mkCanvas(nw, nh);
+    nx.ctx.drawImage(cur.canvas, 0, 0, cw, ch, 0, 0, nw, nh);
+    cur = nx; cw = nw; ch = nh;
+  }
+  if (cw === dw && ch === dh) return cur;
+  const out = mkCanvas(dw, dh);
+  out.ctx.drawImage(cur.canvas, 0, 0, cw, ch, 0, 0, dw, dh);
+  return out;
+}
+function hsvOf(id){
+  const n = id.width*id.height, d = id.data;
+  const H = new Float32Array(n), Sa = new Float32Array(n), V = new Float32Array(n), G = new Float32Array(n);
+  for (let i=0, p=0; i<n; i++, p+=4) {
+    const r = d[p]/255, g = d[p+1]/255, b = d[p+2]/255;
+    const mx = Math.max(r,g,b), mn = Math.min(r,g,b), df = mx-mn;
+    let hh = 0;
+    if (df > 1e-6) {
+      if (mx === r) hh = 60*(((g-b)/df)%6);
+      else if (mx === g) hh = 60*((b-r)/df+2);
+      else hh = 60*((r-g)/df+4);
+      if (hh < 0) hh += 360;
+    }
+    H[i] = hh; Sa[i] = mx > 1e-6 ? df/mx : 0; V[i] = mx;
+    G[i] = 0.299*d[p] + 0.587*d[p+1] + 0.114*d[p+2];
+  }
+  return {H, S:Sa, V, G};
+}
+function boxBlur(src, w, h, r){
+  const tmp = new Float32Array(w*h), out = new Float32Array(w*h);
+  const ps = new Float64Array(Math.max(w,h)+1);
+  for (let y=0; y<h; y++) {
+    const o = y*w; ps[0] = 0;
+    for (let x=0; x<w; x++) ps[x+1] = ps[x] + src[o+x];
+    for (let x=0; x<w; x++) {
+      const a = x-r < 0 ? 0 : x-r, b = x+r > w-1 ? w-1 : x+r;
+      tmp[o+x] = (ps[b+1]-ps[a])/(b-a+1);
+    }
+  }
+  for (let x=0; x<w; x++) {
+    ps[0] = 0;
+    for (let y=0; y<h; y++) ps[y+1] = ps[y] + tmp[y*w+x];
+    for (let y=0; y<h; y++) {
+      const a = y-r < 0 ? 0 : y-r, b = y+r > h-1 ? h-1 : y+r;
+      out[y*w+x] = (ps[b+1]-ps[a])/(b-a+1);
+    }
+  }
+  return out;
+}
+function gradMag(G, w, h){
+  const out = new Float32Array(w*h);
+  for (let y=1; y<h-1; y++) {
+    const o = y*w;
+    for (let x=1; x<w-1; x++) {
+      const i = o+x;
+      out[i] = Math.abs(G[i+1]-G[i-1]) + Math.abs(G[i+w]-G[i-w]);
+    }
+  }
+  return out;
+}
+function otsuHist(hist, tot){
+  if (!tot) return 128;
+  let sum = 0;
+  for (let i=0; i<256; i++) sum += i*hist[i];
+  let wB = 0, sB = 0, best = -1, bt = 128;
+  for (let t=0; t<256; t++) {
+    wB += hist[t]; if (!wB) continue;
+    const wF = tot - wB; if (wF <= 0) break;
+    sB += t*hist[t];
+    const mB = sB/wB, mF = (sum-sB)/wF, v = wB*wF*(mB-mF)*(mB-mF);
+    if (v > best) { best = v; bt = t; }
+  }
+  return bt;
+}
+function otsuOf(vals, scale, mask, n){
+  const hist = new Float64Array(256);
+  let tot = 0;
+  for (let i=0; i<n; i++) {
+    if (mask && !mask[i]) continue;
+    let v = vals[i]*scale | 0;
+    if (v < 0) v = 0; else if (v > 255) v = 255;
+    hist[v]++; tot++;
+  }
+  return otsuHist(hist, tot);
+}
+function erode(m, w, h, r){
+  if (r <= 0) return m;
+  const a = new Uint8Array(w*h), out = new Uint8Array(w*h);
+  for (let y=0; y<h; y++) {
+    const o = y*w;
+    for (let x=0; x<w; x++) {
+      if (x < r || x >= w-r) continue;
+      let v = 1;
+      for (let k=x-r; k<=x+r; k++) if (!m[o+k]) { v = 0; break; }
+      a[o+x] = v;
+    }
+  }
+  for (let x=0; x<w; x++) {
+    for (let y=r; y<h-r; y++) {
+      let v = 1;
+      for (let k=y-r; k<=y+r; k++) if (!a[k*w+x]) { v = 0; break; }
+      out[y*w+x] = v;
+    }
+  }
+  return out;
+}
+function ccLabel(m, w, h){
+  const n = w*h, lab = new Int32Array(n), stack = new Int32Array(n), comps = [];
+  let cur = 0;
+  for (let seed=0; seed<n; seed++) {
+    if (!m[seed] || lab[seed]) continue;
+    cur++;
+    let sp = 0; stack[sp++] = seed; lab[seed] = cur;
+    let area = 0, sx = 0, sy = 0, minx = 1e9, maxx = -1, miny = 1e9, maxy = -1;
+    while (sp) {
+      const p = stack[--sp], py = (p/w)|0, px = p - py*w;
+      area++; sx += px; sy += py;
+      if (px < minx) minx = px; if (px > maxx) maxx = px;
+      if (py < miny) miny = py; if (py > maxy) maxy = py;
+      for (let dy=-1; dy<=1; dy++) {
+        const ny = py+dy; if (ny < 0 || ny >= h) continue;
+        for (let dx=-1; dx<=1; dx++) {
+          const nx = px+dx; if (nx < 0 || nx >= w || (!dx && !dy)) continue;
+          const q = ny*w+nx;
+          if (m[q] && !lab[q]) { lab[q] = cur; stack[sp++] = q; }
+        }
+      }
+    }
+    if (area >= 12) comps.push({id:cur, a:area, cx:sx/area, cy:sy/area, minx, maxx, miny, maxy});
+  }
+  return {lab, comps};
+}
+function dt1d(f, d, v, z, n){
+  const INF = 1e20;
+  let k = 0; v[0] = 0; z[0] = -INF; z[1] = INF;
+  for (let q=1; q<n; q++) {
+    let s = ((f[q]+q*q)-(f[v[k]]+v[k]*v[k]))/(2*q-2*v[k]);
+    while (s <= z[k]) { k--; s = ((f[q]+q*q)-(f[v[k]]+v[k]*v[k]))/(2*q-2*v[k]); }
+    k++; v[k] = q; z[k] = s; z[k+1] = INF;
+  }
+  k = 0;
+  for (let q=0; q<n; q++) {
+    while (z[k+1] < q) k++;
+    d[q] = (q-v[k])*(q-v[k]) + f[v[k]];
+  }
+}
+/* exact euclidean distance transform (Felzenszwalb & Huttenlocher) */
+function edt(mask, w, h){
+  const n = w*h, INF = 1e20, g = new Float64Array(n);
+  for (let i=0; i<n; i++) g[i] = mask[i] ? INF : 0;
+  const mx = Math.max(w,h);
+  const f = new Float64Array(mx), d = new Float64Array(mx);
+  const v = new Int32Array(mx), z = new Float64Array(mx+1);
+  for (let y=0; y<h; y++) {
+    const o = y*w;
+    for (let x=0; x<w; x++) f[x] = g[o+x];
+    dt1d(f, d, v, z, w);
+    for (let x=0; x<w; x++) g[o+x] = d[x];
+  }
+  for (let x=0; x<w; x++) {
+    for (let y=0; y<h; y++) f[y] = g[y*w+x];
+    dt1d(f, d, v, z, h);
+    for (let y=0; y<h; y++) g[y*w+x] = d[y];
+  }
+  const out = new Float32Array(n);
+  for (let i=0; i<n; i++) out[i] = Math.sqrt(g[i] > 0 ? g[i] : 0);
+  return out;
+}
+/* watershed flooding of the distance map, high to low, with h-maxima merging:
+   two peaks separated by a shallow saddle are the same plug, a deep notch is two plugs */
+function floodSplit(dist, mask, w, h, hval){
+  const n = w*h;
+  let cnt = 0;
+  for (let i=0; i<n; i++) if (mask[i]) cnt++;
+  const idx = new Int32Array(cnt);
+  let j = 0;
+  for (let i=0; i<n; i++) if (mask[i]) idx[j++] = i;
+  idx.sort((a,b) => dist[b]-dist[a]);
+  const lab = new Int32Array(n), par = [0], peak = [0];
+  const find = x => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+  let next = 1;
+  const roots = [];
+  for (let t=0; t<cnt; t++) {
+    const p = idx[t], py = (p/w)|0, px = p - py*w, dv = dist[p];
+    roots.length = 0;
+    for (let dy=-1; dy<=1; dy++) {
+      const ny = py+dy; if (ny < 0 || ny >= h) continue;
+      for (let dx=-1; dx<=1; dx++) {
+        const nx = px+dx; if (nx < 0 || nx >= w || (!dx && !dy)) continue;
+        const l = lab[ny*w+nx];
+        if (l) { const r = find(l); if (roots.indexOf(r) < 0) roots.push(r); }
+      }
+    }
+    if (!roots.length) { par.push(next); peak.push(dv); lab[p] = next; next++; }
+    else {
+      let keep = roots[0];
+      for (let i=1; i<roots.length; i++) {
+        const a = find(keep), b = find(roots[i]);
+        if (a !== b && Math.min(peak[a], peak[b]) - dv < hval) {
+          par[b] = a; peak[a] = Math.max(peak[a], peak[b]); keep = a;
+        }
+      }
+      lab[p] = find(keep);
+    }
+  }
+  const map = new Map();
+  for (let i=0; i<n; i++) {
+    if (!lab[i]) continue;
+    const r = find(lab[i]); lab[i] = r;
+    let o = map.get(r);
+    if (!o) { o = {id:r, a:0, sx:0, sy:0, peak:0}; map.set(r, o); }
+    const y = (i/w)|0, x = i - y*w;
+    o.a++; o.sx += x; o.sy += y;
+    if (dist[i] > o.peak) o.peak = dist[i];
+  }
+  const objs = [];
+  for (const o of map.values()) objs.push({id:o.id, a:o.a, cx:o.sx/o.a, cy:o.sy/o.a, peak:o.peak});
+  return {lab, objs};
+}
+function median(arr){
+  if (!arr.length) return 0;
+  const a = arr.slice().sort((x,y) => x-y), m = a.length>>1;
+  return a.length%2 ? a[m] : (a[m-1]+a[m])/2;
+}
+/* the dominant object size: median that keeps re-fitting to its own neighbourhood,
+   so merged blobs and stray specks stop dragging it around */
+function unitOf(areas){
+  let u = median(areas);
+  for (let k=0; k<8; k++) {
+    const sel = areas.filter(a => a >= 0.45*u && a <= 2.2*u);
+    if (!sel.length) break;
+    const nu = median(sel);
+    if (Math.abs(nu-u) < 1) break;
+    u = nu;
+  }
+  return u || 1;
+}
+function biggestCluster(comps, unit){
+  if (comps.length < 2) return comps;
+  const link = 2.6*Math.sqrt(unit), l2 = link*link, par = comps.map((_,i) => i);
+  const find = x => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x]; } return x; };
+  for (let i=0; i<comps.length; i++) for (let j=i+1; j<comps.length; j++) {
+    const dx = comps[i].cx-comps[j].cx, dy = comps[i].cy-comps[j].cy;
+    if (dx*dx+dy*dy <= l2) { const a = find(i), b = find(j); if (a !== b) par[b] = a; }
+  }
+  const groups = new Map();
+  for (let i=0; i<comps.length; i++) {
+    const r = find(i);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(comps[i]);
+  }
+  let best = [], bestA = -1;
+  for (const g of groups.values()) {
+    const a = g.reduce((s,c) => s+c.a, 0);
+    if (a > bestA) { bestA = a; best = g; }
+  }
+  return best;
+}
+/* in-focus region of the whole photo: local edge energy over an Otsu threshold, then a
+   coverage test so the flat middle of a sharp plug stays in but deep blur does not */
+function focusField(G, w, h, strength){
+  const en = boxBlur(gradMag(G, w, h), w, h, Math.max(3, Math.round(Math.min(w,h)/80)));
+  let mx = 0;
+  for (let i=0; i<en.length; i++) if (en[i] > mx) mx = en[i];
+  const sc = 255/(mx || 1);
+  const t = otsuOf(en, sc, null, en.length)*strength;
+  const sharp = new Float32Array(en.length);
+  for (let i=0; i<en.length; i++) sharp[i] = en[i]*sc >= t ? 1 : 0;
+  const cov = boxBlur(sharp, w, h, Math.max(6, Math.round(Math.min(w,h)/35)));
+  const out = new Uint8Array(en.length);
+  for (let i=0; i<out.length; i++) out[i] = cov[i] >= 0.12 ? 1 : 0;
+  return out;
+}
+/* k marker spots inside one blob: deepest points of the distance map, each
+   suppressing a disc around itself; the radius relaxes until k of them fit */
+function placeK(idx, dist, W, k, unit){
+  if (!idx.length) return [];
+  const order = idx.slice().sort((a,b) => dist[b]-dist[a]);
+  let supr = 0.72*Math.sqrt(unit);
+  for (;;) {
+    const pts = [], s2 = supr*supr;
+    for (const p of order) {
+      const y = (p/W)|0, x = p - y*W;
+      let ok = true;
+      for (const q of pts) {
+        const dx = x-q.x, dy = y-q.y;
+        if (dx*dx+dy*dy <= s2) { ok = false; break; }
+      }
+      if (ok) { pts.push({x, y}); if (pts.length >= k) return pts; }
+    }
+    if (pts.length >= k || supr < 3) return pts;
+    supr *= 0.7;
+  }
+}
+
+/* green plug faces: hue around 168deg; Otsu on saturation then drops the pale
+   translucent collar, which is what keeps neighbouring plugs apart */
+function greenMasks(hsv, n, fo, tight){
+  const coarse = new Uint8Array(n);
+  let cnt = 0;
+  for (let i=0; i<n; i++) {
+    if (!fo[i] || hsv.S[i] < 0.18 || hsv.V[i] < 0.12) continue;
+    const dh = Math.abs(((hsv.H[i]-168+540)%360)-180);
+    if (dh <= 50) { coarse[i] = 1; cnt++; }
+  }
+  if (cnt < 100) return {coarse, fine:coarse, cnt, t:0};
+  const t = otsuOf(hsv.S, 255, coarse, n);
+  const fine = new Uint8Array(n);
+  for (let i=0; i<n; i++) if (coarse[i] && hsv.S[i]*255 >= t*tight) fine[i] = 1;
+  return {coarse, fine, cnt, t};
+}
+
+/* ---------------------------------------------------------------- pipeline */
+function analyse(){
+  const t0 = performance.now();
+  const src = S.img;
+
+  /* stage 1 - find the cluster on a small copy */
+  const sw = src.w, sh = src.h;
+  const k = Math.min(1, 600/Math.max(sw, sh));
+  const s1 = scaledCopy(src.el, 0, 0, sw, sh,
+                        Math.max(1, Math.round(sw*k)), Math.max(1, Math.round(sh*k)));
+  const W1 = s1.canvas.width, H1 = s1.canvas.height;
+  const hsv1 = hsvOf(s1.ctx.getImageData(0, 0, W1, H1));
+  const fo1 = focusField(hsv1.G, W1, H1, P.focus);
+  const m1 = greenMasks(hsv1, W1*H1, fo1, P.tight);
+  S.full = s1.canvas;
+  if (m1.cnt < 100) return fail("照片裡找不到綠色塞頭");
+  /* the cluster never forms one connected blob - every plug is fenced off by its own
+     translucent collar - so smear the mask until the faces merge into one region and
+     take the largest region. Taking the largest connected blob instead framed only a
+     corner of the pile and cut plugs off at the edge of the crop. */
+  const dens = boxBlur(m1.coarse, W1, H1, Math.max(4, Math.round(Math.min(W1,H1)/28)));
+  const region = new Uint8Array(W1*H1);
+  for (let i=0; i<W1*H1; i++) region[i] = dens[i] >= 0.22 ? 1 : 0;
+  const cc1 = ccLabel(region, W1, H1);
+  if (!cc1.comps.length) return fail("照片裡找不到綠色塞頭");
+  let big = cc1.comps[0];
+  for (const c of cc1.comps) if (c.a > big.a) big = c;
+
+  /* frame every green pixel inside that region, not just the region itself */
+  let X0 = 1e9, X1 = -1, Y0 = 1e9, Y1 = -1, nsel = 0;
+  for (let y=big.miny; y<=big.maxy; y++) {
+    const o = y*W1;
+    for (let x=big.minx; x<=big.maxx; x++) {
+      const i = o+x;
+      if (cc1.lab[i] !== big.id || !m1.coarse[i]) continue;
+      nsel++;
+      if (x < X0) X0 = x; if (x > X1) X1 = x;
+      if (y < Y0) Y0 = y; if (y > Y1) Y1 = y;
+    }
+  }
+  if (nsel < 50) { X0 = big.minx; X1 = big.maxx; Y0 = big.miny; Y1 = big.maxy; }
+
+  const f = sw/W1;
+  const pad = 0.12*Math.max(X1-X0, Y1-Y0);
+  const x0 = Math.max(0, Math.floor((X0-pad)*f));
+  const x1 = Math.min(sw, Math.ceil((X1+pad)*f));
+  const y0 = Math.max(0, Math.floor((Y0-pad)*f));
+  const y1 = Math.min(sh, Math.ceil((Y1+pad)*f));
+  const cw0 = Math.max(8, x1-x0), ch0 = Math.max(8, y1-y0);
+  S.roi = {x0, y0, cw0, ch0, f};
+
+  /* stage 2 - crop the cluster out of the full-size photo and work at ~1000 px */
+  const z = Math.min(1000/Math.max(cw0, ch0), 1.5);
+  const W = Math.max(8, Math.round(cw0*z)), H = Math.max(8, Math.round(ch0*z));
+  const s2 = scaledCopy(src.el, x0, y0, cw0, ch0, W, H);
+  const hsv2 = hsvOf(s2.ctx.getImageData(0, 0, W, H));
+
+  /* reuse the whole-photo focus decision - re-thresholding inside the crop is
+     meaningless because nearly everything in there is already sharp */
+  const fo2 = new Uint8Array(W*H);
+  const gx = new Int32Array(W), gy = new Int32Array(H);
+  for (let x=0; x<W; x++) gx[x] = Math.min(W1-1, Math.max(0, Math.floor((x0+(x+0.5)*cw0/W)/f)));
+  for (let y=0; y<H; y++) gy[y] = Math.min(H1-1, Math.max(0, Math.floor((y0+(y+0.5)*ch0/H)/f)));
+  for (let y=0; y<H; y++) {
+    const r = gy[y]*W1, o = y*W;
+    for (let x=0; x<W; x++) fo2[o+x] = fo1[r+gx[x]];
+  }
+
+  const m2 = greenMasks(hsv2, W*H, fo2, P.tight);
+  if (m2.cnt < 100) return fail("放大後找不到綠色塞頭");
+  const m = erode(m2.fine, W, H, Math.max(1, Math.round(Math.min(W,H)/330)));
+  const cc = ccLabel(m, W, H);
+  if (!cc.comps.length) return fail("綠色區塊太小，試著調低「顏色門檻」");
+
+  const unit = unitOf(cc.comps.map(c => c.a))*P.unitAdj;
+  let kept = cc.comps.filter(c => c.a >= P.minc*unit);
+  kept = biggestCluster(kept, unit);
+  if (!kept.length) return fail("沒有符合大小的區塊，試著調低「最小面積」");
+
+  const keep = new Set(kept.map(c => c.id));
+  const keptMask = new Uint8Array(W*H);
+  for (let i=0; i<W*H; i++) if (cc.lab[i] && keep.has(cc.lab[i])) keptMask[i] = 1;
+
+  const dist = edt(keptMask, W, H);
+  const perMax = new Map(), pix = new Map();
+  for (let i=0; i<W*H; i++) {
+    if (!keptMask[i]) continue;
+    const l = cc.lab[i], d = dist[i];
+    if (!(perMax.get(l) >= d)) perMax.set(l, d);
+    let a = pix.get(l);
+    if (!a) { a = []; pix.set(l, a); }
+    a.push(i);
+  }
+  const rTyp = median([...perMax.values()]) || 8;
+
+  /* the count itself: every blob is round(its area / one plug's area), at least one */
+  const rows = [];
+  let pts = [];
+  kept.slice().sort((a,b) => b.a-a.a).forEach(c => {
+    const ratio = c.a/unit, k = Math.max(1, Math.round(ratio));
+    const off = Math.abs(ratio - Math.floor(ratio) - 0.5);
+    const border = c.minx <= 2 || c.maxx >= W-3 || c.miny <= 2 || c.maxy >= H-3;
+    rows.push({a:c.a, ratio, k, border, edgy: off < 0.15 && ratio > 0.65});
+    pts = pts.concat(placeK(pix.get(c.id) || [], dist, W, k, unit));
+  });
+  const total = rows.reduce((s, r) => s+r.k, 0);
+
+  /* independent second opinion: watershed split of the same mask */
+  const ws = floodSplit(dist, keptMask, W, H, HFAC*rTyp).objs
+               .filter(o => o.a >= 0.15*unit).length;
+
+  const rowH = 2.0*rTyp;
+  pts.sort((a,b) => (Math.round(a.y/rowH)-Math.round(b.y/rowH)) || (a.x-b.x));
+
+  S.crop = {canvas:s2.canvas, W, H};
+  S.tint = tintOf(keptMask, W, H);
+  S.rTyp = rTyp;
+  S.markers = pts.map(p => ({x:p.x, y:p.y, manual:false}));
+  S.autoN = total; S.added = 0; S.removed = 0;
+  S.rows = rows;
+  S.stats = {
+    unit: Math.round(unit),
+    comps: kept.length,
+    merged: rows.filter(r => r.k > 1).length,
+    ws,
+    workPx: Math.round(Math.sqrt(unit)*(cw0/W)),          /* one plug as the maths saw it */
+    plugPx: Math.round(Math.sqrt(unit)*(cw0/W)*src.k0),   /* one plug in the original photo */
+    photo: `${src.ow}×${src.oh}`,
+    share: cw0/sw,                                        /* share of the frame the pile fills */
+    ms: Math.round(performance.now()-t0)
+  };
+  S.label = "";
+  render();
+}
+function tintOf(mask, w, h){
+  const {canvas, ctx} = mkCanvas(w, h);
+  const id = ctx.createImageData(w, h), d = id.data;
+  for (let i=0, p=0; i<w*h; i++, p+=4) {
+    if (mask[i]) { d[p] = 14; d[p+1] = 156; d[p+2] = 134; d[p+3] = 255; }
+  }
+  ctx.putImageData(id, 0, 0);
+  return canvas;
+}
+function fail(msg){
+  S.crop = null; S.tint = null; S.markers = []; S.autoN = 0;
+  S.stats = null; S.rows = null; S.label = msg;
+  render();
+}
+
+/* ----------------------------------------------------------------- drawing */
+function render(){
+  const c = els.view, g = c.getContext("2d");
+  const showSource = S.view === "source" || !S.crop;
+  if (showSource && S.full) {
+    c.width = S.full.width; c.height = S.full.height;
+    g.clearRect(0, 0, c.width, c.height);
+    g.drawImage(S.full, 0, 0);
+    if (S.roi) {
+      const f = S.roi.f;
+      g.strokeStyle = accent(); g.lineWidth = Math.max(2, c.width/220);
+      g.setLineDash([g.lineWidth*3, g.lineWidth*2]);
+      g.strokeRect(S.roi.x0/f, S.roi.y0/f, S.roi.cw0/f, S.roi.ch0/f);
+      g.setLineDash([]);
+    }
+  } else if (S.crop) {
+    c.width = S.crop.W; c.height = S.crop.H;
+    g.clearRect(0, 0, c.width, c.height);
+    g.drawImage(S.crop.canvas, 0, 0);
+    if (S.tint) {
+      g.globalAlpha = S.view === "mask" ? 0.80 : 0.26;
+      g.drawImage(S.tint, 0, 0);
+      g.globalAlpha = 1;
+    }
+    drawMarkers(g);
+  } else {
+    c.width = 480; c.height = 300;
+    g.clearRect(0, 0, c.width, c.height);
+  }
+  els.count.textContent = S.crop || S.markers.length ? S.markers.length : "—";
+  els.status.textContent = S.label || (S.crop ? `放大 ${S.crop.W}×${S.crop.H}` : "等待照片");
+  els.empty.hidden = !!S.img;
+  els.view.hidden = !S.img;
+  const st = S.stats;
+  els.mAuto.textContent = st ? S.autoN : "—";
+  els.mEdit.innerHTML = (S.added || S.removed)
+    ? `+${S.added} / −${S.removed}` : `<small>未修正</small>`;
+  els.mEdit.className = (S.added || S.removed) ? "edit" : "";
+  els.mUnit.innerHTML = st ? `${st.unit}<small> px²</small>` : "—";
+  els.mComp.textContent = st ? st.comps : "—";
+  els.mMerge.innerHTML = st ? (st.merged ? `${st.merged}<small> 塊</small>` : `<small>沒有</small>`) : "—";
+  els.mWs.innerHTML = st ? `${st.ws}<small>${st.ws === S.autoN ? " 一致" : " 不一致"}</small>` : "—";
+  els.mWs.className = st && st.ws !== S.autoN ? "edit" : "";
+  els.mTime.innerHTML = st ? `${st.ms}<small> ms</small>` : "—";
+  if (!st && !S.img) {
+    els.qual.textContent = "選一張照片後，這裡會顯示拍攝品質";
+    els.qual.className = "qual";
+  } else if (st) {
+    const thin = st.workPx < 25;
+    els.qual.innerHTML = `照片 <b>${st.photo}</b> · 單顆約 <b>${st.plugPx}</b> px 見方 ·`
+      + ` 整捆佔畫面寬 <b>${Math.round(st.share*100)}%</b> · `
+      + (thin ? "解析度偏低，靠近一點重拍會更準" : "解析度充足");
+    els.qual.className = thin ? "qual warn" : "qual";
+  } else {
+    els.qual.textContent = S.label || "沒有結果";
+    els.qual.className = "qual warn";
+  }
+  renderRows();
+}
+function renderRows(){
+  if (!S.rows || !S.rows.length) {
+    els.rows.innerHTML = `<tr><td colspan="5" class="note">尚無結果</td></tr>`;
+    return;
+  }
+  els.rows.innerHTML = S.rows.map((r, i) => {
+    const cls = [r.k > 1 ? "multi" : "", r.edgy ? "edgy" : "", r.border ? "border" : ""]
+                  .filter(Boolean).join(" ");
+    const note = r.border ? "碰到畫面邊緣，可能被切到"
+               : r.edgy ? "比值接近 .5，可能差一顆"
+               : r.k > 1 ? `${r.k} 顆黏在一起`
+               : r.ratio < 0.75 ? "只露出一部分，仍算一顆" : "";
+    return `<tr class="${cls}"><td>${i+1}</td><td>${r.a}</td>`
+         + `<td class="r">${r.ratio.toFixed(2)}</td><td class="k">${r.k}</td>`
+         + `<td class="note">${note}</td></tr>`;
+  }).join("");
+}
+function accent(){
+  return getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#0B8C77";
+}
+function drawMarkers(g){
+  const r = Math.max(10, S.rTyp*0.40), lw = Math.max(2, r*0.20);
+  g.font = `700 ${Math.round(r*1.15)}px "Chakra Petch", monospace`;
+  g.textAlign = "center"; g.textBaseline = "middle";
+  S.markers.forEach((mk, i) => {
+    const col = mk.manual ? "#B0561F" : "#06554A";
+    g.beginPath(); g.arc(mk.x, mk.y, r, 0, Math.PI*2);
+    g.fillStyle = mk.manual ? "rgba(255,241,230,.94)" : "rgba(255,255,255,.92)";
+    g.fill();
+    g.lineWidth = lw; g.strokeStyle = col; g.stroke();
+    g.fillStyle = col; g.fillText(String(i+1), mk.x, mk.y + r*0.06);
+  });
+}
+
+/* ------------------------------------------------------------- interaction */
+els.view.addEventListener("pointerdown", e => {
+  if (!S.crop || S.view === "source") return;
+  const c = els.view, rect = c.getBoundingClientRect();
+  const x = (e.clientX-rect.left)*(c.width/rect.width);
+  const y = (e.clientY-rect.top)*(c.height/rect.height);
+  const hit = Math.max(16, S.rTyp*0.95);
+  let found = -1, bestD = Infinity;
+  S.markers.forEach((mk, i) => {
+    const d = (mk.x-x)**2 + (mk.y-y)**2;
+    if (d < hit*hit && d < bestD) { bestD = d; found = i; }
+  });
+  if (found >= 0) {
+    S.markers[found].manual ? S.added-- : S.removed++;
+    S.markers.splice(found, 1);
+  } else {
+    S.markers.push({x, y, manual:true});
+    S.added++;
+  }
+  render();
+});
+els.tabs.addEventListener("click", e => {
+  const b = e.target.closest(".tab"); if (!b) return;
+  S.view = b.dataset.view;
+  [...els.tabs.children].forEach(t => {
+    const on = t === b;
+    t.classList.toggle("is-on", on);
+    t.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  render();
+});
+function busy(on, then){
+  els.busy.hidden = !on;
+  if (on) requestAnimationFrame(() => requestAnimationFrame(then));
+}
+function rerun(){
+  if (!S.img) return;
+  busy(true, () => {
+    try { analyse(); }
+    catch (err) { fail("運算失敗：" + err.message); }
+    finally { els.busy.hidden = true; }
+  });
+}
+function loadSrc(url, name){
+  const img = new Image();
+  img.onload = () => {
+    /* a 12 MP phone photo costs seconds to work through for no gain: the resolution
+       sweep counts the same 20 plugs all the way down to a 450 px wide photo */
+    const w0 = img.naturalWidth, h0 = img.naturalHeight;
+    if (Math.max(w0, h0) > 2200) {
+      const z = 2000/Math.max(w0, h0);
+      const c = scaledCopy(img, 0, 0, w0, h0, Math.round(w0*z), Math.round(h0*z));
+      S.img = {el:c.canvas, w:c.canvas.width, h:c.canvas.height, k0:w0/c.canvas.width, ow:w0, oh:h0};
+    } else {
+      S.img = {el:img, w:w0, h:h0, k0:1, ow:w0, oh:h0};
+    }
+    S.view = "result"; syncTabs(); rerun();
+  };
+  img.onerror = () => fail("這個檔案讀不進來，換一張試試");
+  img.decoding = "sync";
+  img.src = url;
+  els.status.textContent = name || "讀取中…";
+}
+/* read through FileReader rather than URL.createObjectURL: a blob: URL belongs to the
+   page's origin, and this page runs in a sandboxed frame where that can fail silently */
+function loadFile(fl){
+  if (!fl) return;
+  if (!/^image\//.test(fl.type || "")) { fail("這不是圖片檔（" + (fl.type || "未知格式") + "）"); return; }
+  els.busy.hidden = false;
+  els.status.textContent = "讀取 " + fl.name + "…";
+  const fr = new FileReader();
+  fr.onload = () => loadSrc(fr.result, fl.name);
+  fr.onerror = () => { els.busy.hidden = true; fail("讀取檔案失敗，再試一次"); };
+  fr.readAsDataURL(fl);
+}
+function syncTabs(){
+  [...els.tabs.children].forEach(t => {
+    const on = t.dataset.view === S.view;
+    t.classList.toggle("is-on", on);
+    t.setAttribute("aria-selected", on ? "true" : "false");
+  });
+}
+function pick(input){
+  input.addEventListener("change", () => {
+    loadFile(input.files && input.files[0]);
+    input.value = "";
+  });
+}
+pick(els.file); pick(els.cam);
+els.btnReset.addEventListener("click", rerun);
+els.btnClear.addEventListener("click", () => {
+  if (!S.crop) return;
+  S.removed += S.markers.filter(m => !m.manual).length;
+  S.added = 0;
+  S.markers = [];
+  render();
+});
+[["unitAdj","oUnitAdj",2],["minc","oMinc",2],["tight","oTight",2],["focus","oFocus",2]]
+  .forEach(([id, out, dp]) => {
+    const el = els[id];
+    const show = () => { els[out].textContent = (+el.value).toFixed(dp); };
+    el.addEventListener("input", () => { show(); P[id] = +el.value; });
+    el.addEventListener("change", rerun);
+    show();
+  });
+addEventListener("paste", e => {
+  const it = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith("image/"));
+  if (it) loadFile(it.getAsFile());
+});
+els.box.addEventListener("dragover", e => e.preventDefault());
+els.box.addEventListener("drop", e => {
+  e.preventDefault();
+  loadFile(e.dataTransfer.files && e.dataTransfer.files[0]);
+});
+render();
+</script>
+</body>
+</html>
