@@ -304,33 +304,69 @@ def _biggest_cluster(stats: np.ndarray, labels: List[int], unit: float) -> List[
     return max(groups.values(), key=lambda g: sum(stats[l][2] for l in g))
 
 
+def _snap(c: np.ndarray, pts: np.ndarray) -> Tuple[float, float]:
+    """把座標拉到區塊內最近的像素上，避免 L 形區塊的質心落在洞裡。"""
+    i = int(np.argmin(((pts - c) ** 2).sum(1)))
+    d2 = float(((pts[i] - c) ** 2).sum())
+    return (float(c[0]), float(c[1])) if d2 <= 2.0 else (float(pts[i][0]), float(pts[i][1]))
+
+
 def _place(dist: np.ndarray, lab_img: np.ndarray, label: int, k: int,
            unit: float) -> List[Tuple[float, float]]:
-    """在一塊區域裡挑 k 個標記位置：距離圖最深的點，彼此互相排開。"""
+    """在一塊區域裡挑 k 個標記位置。
+
+    不能只取距離圖最深的點：矩形的距離轉換是沿長軸的一整條脊線，
+    上面每一點的值幾乎相同，argmax 會被邊緣的微小雜訊左右，標記
+    因此沿長軸跳動。改成取質心 —— 矩形的質心就是中心，而且是幾千
+    個像素平均出來的，雜訊推不動它。
+
+    黏在一起的區塊仍用距離峰值決定「幾顆、大致在哪」，再用 Lloyd
+    迭代把每個標記收斂到它自己那顆塞頭的質心。
+    """
     ys, xs = np.nonzero(lab_img == label)
     if ys.size == 0:
         return []
-    d = dist[ys, xs]
-    if k <= 1:
-        i = int(np.argmax(d))
-        return [(float(xs[i]), float(ys[i]))]
+    pts = np.stack([xs, ys], 1).astype(np.float32)
 
-    keep = d >= 0.3 * d.max()          # 只有夠深的點才可能是塞頭中心
-    ys, xs, d = ys[keep], xs[keep], d[keep]
-    order = np.argsort(-d)
+    if k <= 1:
+        return [_snap(pts.mean(0), pts)]
+
+    # 種子：距離圖上夠深、且彼此排開的點
+    d = dist[ys, xs]
+    deep = d >= 0.3 * d.max()
+    cand, cd = pts[deep], d[deep]
+    order = np.argsort(-cd)
     supr = 0.72 * math.sqrt(unit)
+    seeds: List[np.ndarray] = []
     while True:
-        pts: List[Tuple[float, float]] = []
+        seeds = []
         s2 = supr * supr
         for oi in order:
-            x, y = float(xs[oi]), float(ys[oi])
-            if all((x - px) ** 2 + (y - py) ** 2 > s2 for px, py in pts):
-                pts.append((x, y))
-                if len(pts) >= k:
-                    return pts
-        if len(pts) >= k or supr < 3:
-            return pts
+            p = cand[oi]
+            if all(float(((p - q) ** 2).sum()) > s2 for q in seeds):
+                seeds.append(p)
+                if len(seeds) >= k:
+                    break
+        if len(seeds) >= k or supr < 3:
+            break
         supr *= 0.7
+    if not seeds:
+        return [_snap(pts.mean(0), pts)]
+
+    # Lloyd 迭代：每個標記移到「離它最近的那些像素」的質心
+    c = np.array(seeds[:k], np.float32)
+    for _ in range(12):
+        owner = ((pts[:, None, :] - c[None, :, :]) ** 2).sum(-1).argmin(1)
+        nxt = c.copy()
+        for j in range(len(c)):
+            m = owner == j
+            if m.any():
+                nxt[j] = pts[m].mean(0)
+        shift = float(np.abs(nxt - c).max())
+        c = nxt
+        if shift < 0.5:
+            break
+    return [_snap(ci, pts) for ci in c]
 
 
 # ---------------------------------------------------------------- 主流程

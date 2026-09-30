@@ -663,26 +663,79 @@ function rectOf(pts){
   return best || {w:0, L:0, area:0};
 }
 
-/* k marker spots inside one blob: deepest points of the distance map, each
-   suppressing a disc around itself; the radius relaxes until k of them fit */
+/* k marker spots inside one blob.
+
+   Not simply the deepest points of the distance map: a rectangle's distance
+   transform is a ridge running along its long axis, every point on it worth
+   almost the same, so argmax gets decided by pixel noise at the edges and the
+   marker slides along the plug. A centroid is the rectangle's centre by
+   definition and is averaged over thousands of pixels, so noise cannot move it.
+   Blobs holding several plugs still use the deep points to decide how many and
+   roughly where, then Lloyd iterations settle each marker on its own plug. */
+function centroidOf(idx, W){
+  let sx = 0, sy = 0;
+  for (const p of idx) { const y = (p/W)|0; sx += p - y*W; sy += y; }
+  return {x: sx/idx.length, y: sy/idx.length};
+}
+function snapTo(c, idx, W){
+  let best = null, bd = Infinity;
+  for (const p of idx) {
+    const y = (p/W)|0, x = p - y*W;
+    const d = (x-c.x)*(x-c.x) + (y-c.y)*(y-c.y);
+    if (d < bd) { bd = d; best = {x, y}; }
+  }
+  return bd <= 2 ? c : best;
+}
 function placeK(idx, dist, W, k, unit){
   if (!idx.length) return [];
-  const order = idx.slice().sort((a,b) => dist[b]-dist[a]);
-  let supr = 0.72*Math.sqrt(unit);
+  if (k <= 1) return [snapTo(centroidOf(idx, W), idx, W)];
+
+  let peak = 0;
+  for (const p of idx) if (dist[p] > peak) peak = dist[p];
+  const deep = idx.filter(p => dist[p] >= 0.3*peak);
+  const order = deep.slice().sort((a,b) => dist[b]-dist[a]);
+
+  let supr = 0.72*Math.sqrt(unit), seeds = [];
   for (;;) {
-    const pts = [], s2 = supr*supr;
+    seeds = [];
+    const s2 = supr*supr;
     for (const p of order) {
       const y = (p/W)|0, x = p - y*W;
       let ok = true;
-      for (const q of pts) {
+      for (const q of seeds) {
         const dx = x-q.x, dy = y-q.y;
-        if (dx*dx+dy*dy <= s2) { ok = false; break; }
+        if (dx*dx + dy*dy <= s2) { ok = false; break; }
       }
-      if (ok) { pts.push({x, y}); if (pts.length >= k) return pts; }
+      if (ok) { seeds.push({x, y}); if (seeds.length >= k) break; }
     }
-    if (pts.length >= k || supr < 3) return pts;
+    if (seeds.length >= k || supr < 3) break;
     supr *= 0.7;
   }
+  if (!seeds.length) return [snapTo(centroidOf(idx, W), idx, W)];
+
+  const c = seeds.slice(0, k).map(s => ({x:s.x, y:s.y}));
+  for (let it = 0; it < 12; it++) {
+    const sx = new Float64Array(c.length), sy = new Float64Array(c.length);
+    const cnt = new Int32Array(c.length);
+    for (const p of idx) {
+      const y = (p/W)|0, x = p - y*W;
+      let bj = 0, bd = Infinity;
+      for (let j = 0; j < c.length; j++) {
+        const dx = x-c[j].x, dy = y-c[j].y, d = dx*dx + dy*dy;
+        if (d < bd) { bd = d; bj = j; }
+      }
+      sx[bj] += x; sy[bj] += y; cnt[bj]++;
+    }
+    let shift = 0;
+    for (let j = 0; j < c.length; j++) {
+      if (!cnt[j]) continue;
+      const nx = sx[j]/cnt[j], ny = sy[j]/cnt[j];
+      shift = Math.max(shift, Math.abs(nx-c[j].x), Math.abs(ny-c[j].y));
+      c[j] = {x:nx, y:ny};
+    }
+    if (shift < 0.5) break;
+  }
+  return c.map(ci => snapTo(ci, idx, W));
 }
 
 /* green plug faces: hue around 168deg; Otsu on saturation then drops the pale
