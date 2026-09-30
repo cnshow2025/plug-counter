@@ -1,0 +1,9 @@
+# 安裝： pip install -r requirements.txt
+streamlit>=1.30
+opencv-python>=4.8
+numpy>=1.24
+pandas>=2.0
+Pillow>=10.0
+
+# 點圖修正用。沒裝的話程式仍可執行，只是改成用 +/- 按鈕調整總數。
+streamlit-image-coordinates>=0.1.9
