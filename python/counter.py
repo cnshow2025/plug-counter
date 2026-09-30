@@ -113,27 +113,75 @@ class Result:
 
     def annotate(self, markers: Optional[List[Tuple[float, float]]] = None,
                  manual: Optional[List[bool]] = None) -> np.ndarray:
-        """畫出標了編號的圖。markers 可以換成人工修正後的版本。"""
+        """在放大後的工作影像上畫編號。markers 可以換成人工修正後的版本。"""
         pts = self.markers if markers is None else markers
-        flags = [False] * len(pts) if manual is None else manual
         out = self.crop.copy()
-
         tint = out.copy()
         tint[self.mask.astype(bool)] = (134, 156, 14)     # BGR
         cv2.addWeighted(tint, 0.26, out, 0.74, 0, out)
-
-        r = max(10, int(round(math.sqrt(max(self.unit, 1)) * 0.30)))
-        for i, (x, y) in enumerate(pts, 1):
-            p = (int(round(x)), int(round(y)))
-            ring = (31, 86, 176) if flags[i - 1] else (74, 85, 6)   # BGR
-            cv2.circle(out, p, r, (255, 255, 255), -1, cv2.LINE_AA)
-            cv2.circle(out, p, r, ring, max(2, r // 6), cv2.LINE_AA)
-            txt = str(i)
-            scale = r / 16.0
-            (tw, th), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_DUPLEX, scale, 2)
-            cv2.putText(out, txt, (p[0] - tw // 2, p[1] + th // 2),
-                        cv2.FONT_HERSHEY_DUPLEX, scale, ring, 2, cv2.LINE_AA)
+        draw_markers(out, pts, manual, math.sqrt(max(self.unit, 1)) * 0.20)
         return out
+
+    def to_source(self, pts: Optional[List[Tuple[float, float]]] = None
+                  ) -> List[Tuple[float, float]]:
+        """把工作影像的座標換算回原始輸入影像的座標。"""
+        pts = self.markers if pts is None else pts
+        x0, y0, x1, _ = self.roi
+        k = (x1 - x0) / max(self.crop.shape[1], 1)
+        return [(x0 + x * k, y0 + y * k) for x, y in pts]
+
+    def annotate_on(self, frame: np.ndarray,
+                    markers: Optional[List[Tuple[float, float]]] = None,
+                    manual: Optional[List[bool]] = None,
+                    count_badge: bool = True) -> np.ndarray:
+        """直接在原始畫面上標號 —— 即時預覽用，看得到整個鏡頭視野。"""
+        out = frame.copy()
+        x0, y0, x1, y1 = self.roi
+        k = (x1 - x0) / max(self.crop.shape[1], 1)
+        cv2.rectangle(out, (int(x0), int(y0)), (int(x1), int(y1)), (134, 156, 14), 2)
+        pts = self.to_source(markers)
+        draw_markers(out, pts, manual, math.sqrt(max(self.unit, 1)) * 0.20 * k)
+        if count_badge:
+            _count_badge(out, len(pts))
+        return out
+
+
+def draw_markers(img: np.ndarray, pts, manual=None, radius: float = 14.0) -> None:
+    """畫上編號。所有圈圈同一尺寸，並且一定容得下最大的那個編號 ——
+    圈圈只夠放一位數時，兩位數會滿出來被背景吃掉。"""
+    if not len(pts):
+        return
+    flags = [False] * len(pts) if manual is None else manual
+    font = cv2.FONT_HERSHEY_DUPLEX
+    r = max(9, int(round(radius)))
+    scale = max(0.34, r / 15.0)
+    thick = 2 if r >= 13 else 1
+    (tw, th), _ = cv2.getTextSize(str(len(pts)), font, scale, thick)
+    r = max(r, int(tw * 0.62) + 3)          # 依最大編號的寬度把圈圈撐開
+    ring_w = max(1, r // 7)
+    for i, (x, y) in enumerate(pts, 1):
+        p = (int(round(x)), int(round(y)))
+        ring = (31, 86, 176) if flags[i - 1] else (74, 85, 6)   # BGR
+        cv2.circle(img, p, r, (255, 255, 255), -1, cv2.LINE_AA)
+        cv2.circle(img, p, r, ring, ring_w, cv2.LINE_AA)
+        txt = str(i)
+        (tw_i, th_i), _ = cv2.getTextSize(txt, font, scale, thick)
+        cv2.putText(img, txt, (p[0] - tw_i // 2, p[1] + th_i // 2),
+                    font, scale, ring, thick, cv2.LINE_AA)
+
+
+def _count_badge(img: np.ndarray, n: int) -> None:
+    """左上角的大數字，即時預覽時一眼就看得到。"""
+    h, w = img.shape[:2]
+    scale = max(1.0, w / 640.0)
+    txt = str(n)
+    font = cv2.FONT_HERSHEY_DUPLEX
+    (tw, th), _ = cv2.getTextSize(txt, font, scale * 1.9, int(3 * scale))
+    pad = int(10 * scale)
+    cv2.rectangle(img, (0, 0), (tw + pad * 2, th + pad * 2), (255, 255, 255), -1)
+    cv2.rectangle(img, (0, 0), (tw + pad * 2, th + pad * 2), (74, 85, 6), max(2, int(2 * scale)))
+    cv2.putText(img, txt, (pad, th + pad), font, scale * 1.9, (74, 85, 6),
+                int(3 * scale), cv2.LINE_AA)
 
 
 class NoPlugsFound(Exception):
